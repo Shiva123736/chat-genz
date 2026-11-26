@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#6c5ce7">
+  <title>CHAT GENZ — Connect with your generation</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bg-orb orb1"></div><div class="bg-orb orb2"></div>
+  <main class="auth-shell" id="authView">
+    <section class="brand-panel">
+      <div class="logo">CG<span>✦</span></div>
+      <p class="eyebrow">YOUR PEOPLE. YOUR SPACE.</p>
+      <h1>Connect.<br><span>Create.</span><br>Discover what's next.</h1>
+      <p class="muted">A fresh space for your ideas, moments, and conversations.</p>
+      <div class="feature-pills"><span>✦ Be yourself</span><span>◉ Share moments</span><span>↗ Find your people</span></div>
+    </section>
+    <section class="auth-card">
+      <div class="mobile-brand logo">CG<span>✦</span> CHAT GENZ</div>
+      <div class="tabs"><button class="tab active" data-tab="login">Sign in</button><button class="tab" data-tab="register">Create account</button></div>
+      <form id="loginForm" class="auth-form">
+        <h2>Welcome back 👋</h2><p class="muted">Your next conversation starts here.</p>
+        <label>Username or email<input id="loginIdentifier" autocomplete="username" required placeholder="you@example.com"></label>
+        <label>Password<div class="password-row"><input id="loginPassword" type="password" autocomplete="current-password" required minlength="8" placeholder="At least 8 characters"><button class="show-pass" type="button" data-target="loginPassword">Show</button></div></label>
+        <button class="primary-btn" type="submit">Sign in <span>→</span></button>
+        <p class="status" id="loginStatus" aria-live="polite"></p>
+      </form>
+      <form id="registerForm" class="auth-form hidden">
+        <h2>Join CHAT GENZ ✨</h2><p class="muted">Create your space in a few steps.</p>
+        <label>Full name<input id="regName" required maxlength="100" placeholder="Your name"></label>
+        <label>Username<input id="regUsername" required minlength="3" maxlength="30" pattern="[a-zA-Z0-9_.]+" placeholder="your.username"></label>
+        <label>Email address<input id="regEmail" type="email" required maxlength="254" placeholder="you@example.com"></label>
+        <label>Create password<div class="password-row"><input id="regPassword" type="password" required minlength="8" placeholder="At least 8 characters"><button class="show-pass" type="button" data-target="regPassword">Show</button></div></label>
+        <button class="primary-btn" type="submit">Create account <span>→</span></button>
+        <p class="status" id="registerStatus" aria-live="polite"></p>
+      </form>
+      <p class="fineprint">By continuing, you agree to use CHAT GENZ respectfully.</p>
+    </section>
+  </main>
+
+  <main id="appView" class="app-layout hidden">
+    <aside class="sidebar">
+      <a class="brand-link" href="#"><span class="mini-logo">CG</span> CHAT GENZ</a>
+      <nav>
+        <button class="nav-btn active" data-view="feed">⌂ <span>Home</span></button>
+        <button class="nav-btn" data-view="explore">⌕ <span>Explore</span></button>
+        <button class="nav-btn" data-view="messages">✉ <span>Messages</span></button>
+        <button class="nav-btn" data-view="profile">◉ <span>My profile</span></button>
+      </nav>
+      <button id="newPostBtn" class="primary-btn post-nav">＋ Create post</button>
+      <div class="sidebar-bottom"><div id="sidebarUser" class="user-chip"></div><button id="logoutBtn" class="text-btn">Sign out ↗</button></div>
+    </aside>
+    <section class="main-column">
+      <header class="topbar"><div><p class="eyebrow">MONDAY MOOD, EVERY DAY</p><h2 id="viewTitle">Your feed</h2></div><div class="top-actions"><input id="topSearch" placeholder="Search people..." aria-label="Search people"><button id="topAvatar" class="avatar">?</button></div></header>
+      <section id="feedView" class="content-view"><div class="welcome-banner"><div><span class="tag">THE GENZ SPACE</span><h3>Your world, in your words.</h3><p>Share something real today.</p></div><button id="bannerPostBtn" class="light-btn">＋ Create a post</button></div><div class="section-heading"><h3>Fresh from the community</h3><span>Latest posts</span></div><div id="feedList" class="post-list"></div></section>
+      <section id="exploreView" class="content-view hidden"><div class="section-heading"><h3>Find your people</h3><span>Search by name or username</span></div><input id="exploreSearch" class="search-large" placeholder="Try @username or a name..."><div id="searchResults" class="people-list"></div></section>
+      <section id="messagesView" class="content-view hidden"><div class="section-heading"><h3>Private messages</h3><span>Choose a person to chat</span></div><div class="message-layout"><div class="message-picker"><input id="messageSearch" placeholder="Find a user..."><div id="messagePeople"></div></div><div class="chat-panel"><div id="chatHeader" class="chat-header">Choose a person to start chatting</div><div id="chatMessages" class="chat-messages"></div><form id="messageForm" class="message-compose"><input id="messageInput" maxlength="4000" placeholder="Write a message..." disabled><button class="primary-btn" type="submit" disabled id="sendMessageBtn">Send</button></form></div></div></section>
+      <section id="profileView" class="content-view hidden"><div id="profileContent"></div></section>
+    </section>
+  </main>
+
+  <dialog id="postDialog" class="post-dialog"><form id="postForm"><div class="dialog-head"><h2>Create a post</h2><button type="button" class="icon-btn" id="closePost">✕</button></div><label>Choose an image<input id="postImage" type="file" accept="image/png,image/jpeg,image/webp" required></label><label>Caption<textarea id="postCaption" rows="3" maxlength="2200" placeholder="What's happening?"></textarea></label><p class="muted small">PNG/JPG/WEBP, maximum 5 MB.</p><button class="primary-btn" type="submit">Share post ↗</button><p id="postStatus" class="status"></p></form></dialog>
+  <div id="toast" class="toast" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>
