@@ -1,12 +1,22 @@
 
-/* =========================================
+/* =====================================================
    CHANTGENZ v2.0
-   Frontend JavaScript
-========================================= */
+   Complete Frontend JavaScript
+   Compatible with your existing Flask backend
+===================================================== */
 
-// Change this when using GitHub Codespaces.
-// Example: https://YOUR-BACKEND-CODESPACE-5000.app.github.dev
+/*
+  LOCAL DEVELOPMENT:
+  const API_BASE = "http://127.0.0.1:5000/api";
+
+  GITHUB CODESPACES:
+  Replace this with your actual forwarded backend URL:
+  https://YOUR-CODESPACE-5000.app.github.dev/api
+*/
+
 const API_BASE = "http://127.0.0.1:5000/api";
+
+const BACKEND_ORIGIN = API_BASE.replace(/\/api\/?$/, "");
 
 const TOKEN_KEY = "chantgenz_token";
 
@@ -14,24 +24,18 @@ let currentUser = null;
 let currentChatUser = null;
 let currentPage = "home";
 
-// -----------------------------------------
-// BASIC HELPERS
-// -----------------------------------------
+let searchTimer = null;
+let messageSearchTimer = null;
 
-const $ = (selector) => document.querySelector(selector);
-const $$ = (selector) => [...document.querySelectorAll(selector)];
 
-function getToken() {
-    return localStorage.getItem(TOKEN_KEY);
-}
+/* =====================================================
+   1. HELPER FUNCTIONS
+===================================================== */
 
-function saveToken(token) {
-    localStorage.setItem(TOKEN_KEY, token);
-}
+const $ = selector => document.querySelector(selector);
 
-function clearToken() {
-    localStorage.removeItem(TOKEN_KEY);
-}
+const $$ = selector => [...document.querySelectorAll(selector)];
+
 
 function escapeHTML(value = "") {
     return String(value).replace(/[&<>"']/g, char => ({
@@ -43,11 +47,59 @@ function escapeHTML(value = "") {
     })[char]);
 }
 
+
+function getToken() {
+    return localStorage.getItem(TOKEN_KEY);
+}
+
+
+function saveToken(token) {
+    localStorage.setItem(TOKEN_KEY, token);
+}
+
+
+function clearToken() {
+    localStorage.removeItem(TOKEN_KEY);
+}
+
+
+function getImageURL(path) {
+    if (!path) return "";
+
+    if (
+        path.startsWith("https://") ||
+        path.startsWith("http://") ||
+        path.startsWith("data:")
+    ) {
+        return path;
+    }
+
+    return BACKEND_ORIGIN +
+        (path.startsWith("/") ? path : "/" + path);
+}
+
+
+function getInitials(name = "User") {
+    return name.trim().charAt(0).toUpperCase() || "U";
+}
+
+
+function getArray(data, key) {
+    if (Array.isArray(data)) return data;
+
+    if (Array.isArray(data?.[key])) {
+        return data[key];
+    }
+
+    return [];
+}
+
+
 function showToast(message) {
     const toast = $("#toast");
 
     if (!toast) {
-        alert(message);
+        console.log(message);
         return;
     }
 
@@ -61,6 +113,7 @@ function showToast(message) {
     }, 3000);
 }
 
+
 function setStatus(element, message, success = false) {
     if (!element) return;
 
@@ -68,19 +121,28 @@ function setStatus(element, message, success = false) {
     element.classList.toggle("success", success);
 }
 
+
+/* =====================================================
+   2. API CONNECTION
+===================================================== */
+
 async function apiRequest(endpoint, options = {}) {
+
     const headers = {
         ...(options.headers || {})
     };
-
-    if (!(options.body instanceof FormData) && options.body) {
-        headers["Content-Type"] = "application/json";
-    }
 
     const token = getToken();
 
     if (token) {
         headers.Authorization = `Bearer ${token}`;
+    }
+
+    if (
+        options.body &&
+        !(options.body instanceof FormData)
+    ) {
+        headers["Content-Type"] = "application/json";
     }
 
     let response;
@@ -90,9 +152,10 @@ async function apiRequest(endpoint, options = {}) {
             ...options,
             headers
         });
+
     } catch (error) {
         throw new Error(
-            "Cannot connect to the server. Check that the Flask backend is running and API_BASE is correct."
+            "Cannot connect to the backend. Check your Flask server and API URL."
         );
     }
 
@@ -106,148 +169,99 @@ async function apiRequest(endpoint, options = {}) {
 
     if (!response.ok) {
         throw new Error(
-            data.message ||
             data.error ||
-            data.msg ||
-            `Server error (${response.status})`
+            data.message ||
+            `Request failed: ${response.status}`
         );
     }
 
     return data;
 }
 
-function getArray(data, keys = []) {
-    if (Array.isArray(data)) return data;
 
-    for (const key of keys) {
-        if (Array.isArray(data?.[key])) {
-            return data[key];
-        }
-    }
-
-    return [];
-}
-
-function getInitials(name = "User") {
-    return name.trim().charAt(0).toUpperCase() || "U";
-}
-
-// -----------------------------------------
-// SHOW / HIDE APPLICATION
-// -----------------------------------------
+/* =====================================================
+   3. AUTHENTICATION VIEW
+===================================================== */
 
 function showAuth() {
-    $("#authView")?.classList.remove("hidden");
-    $("#appView")?.classList.add("hidden");
 
-    if ($("#authView")) {
-        $("#authView").style.display = "";
+    const auth = $("#authView");
+    const app = $("#appView");
+
+    if (auth) {
+        auth.classList.remove("hidden");
+        auth.style.display = "";
     }
 
-    if ($("#appView")) {
-        $("#appView").style.display = "none";
+    if (app) {
+        app.classList.add("hidden");
+        app.style.display = "none";
     }
 }
 
-function showApp() {
-    $("#authView")?.classList.add("hidden");
-    $("#appView")?.classList.remove("hidden");
 
-    if ($("#authView")) {
-        $("#authView").style.display = "none";
+function showApp() {
+
+    const auth = $("#authView");
+    const app = $("#appView");
+
+    if (auth) {
+        auth.classList.add("hidden");
+        auth.style.display = "none";
     }
 
-    if ($("#appView")) {
-        $("#appView").style.display = "";
+    if (app) {
+        app.classList.remove("hidden");
+        app.style.display = "";
     }
 
     updateUserInterface();
+
     navigateTo("home");
 }
 
-function updateUserInterface() {
-    const name = currentUser?.name ||
-                 currentUser?.username ||
-                 "CHANTGENZ User";
 
-    const username = currentUser?.username || "user";
+function updateUserInterface() {
+
+    if (!currentUser) return;
+
+    const name =
+        currentUser.name ||
+        currentUser.username ||
+        "User";
+
+    const username =
+        currentUser.username ||
+        "user";
 
     const nameElement = $("#sidebarUsername");
-    const usernameElement = $("#sidebarHandle");
+    const handleElement = $("#sidebarHandle");
 
-    if (nameElement) nameElement.textContent = name;
-    if (usernameElement) usernameElement.textContent = `@${username}`;
+    if (nameElement) {
+        nameElement.textContent = name;
+    }
 
-    const userNameElements = $$("[data-current-username]");
+    if (handleElement) {
+        handleElement.textContent = "@" + username;
+    }
 
-    userNameElements.forEach(element => {
+    $$("[data-current-username]").forEach(element => {
         element.textContent = username;
     });
 }
 
-// -----------------------------------------
-// LOGIN
-// -----------------------------------------
 
-async function loginUser(event) {
-    event.preventDefault();
-
-    const identifier = $("#loginIdentifier")?.value.trim();
-    const password = $("#loginPassword")?.value;
-
-    const status = $("#loginStatus");
-
-    if (!identifier || !password) {
-        setStatus(status, "Enter your username/email and password.");
-        return;
-    }
-
-    setStatus(status, "Signing in...");
-
-    try {
-        const data = await apiRequest("/auth/login", {
-            method: "POST",
-            body: JSON.stringify({
-                identifier: identifier,
-                username: identifier,
-                email: identifier,
-                password: password
-            })
-        });
-
-        const token = data.access_token ||
-                      data.token ||
-                      data.accessToken;
-
-        if (!token) {
-            throw new Error("The server did not return a login token.");
-        }
-
-        saveToken(token);
-
-        currentUser = data.user || data;
-
-        setStatus(status, "Login successful!", true);
-
-        await loadCurrentUser();
-        showApp();
-        showToast("Welcome back!");
-
-    } catch (error) {
-        setStatus(status, error.message);
-    }
-}
-
-// -----------------------------------------
-// REGISTER
-// -----------------------------------------
+/* =====================================================
+   4. REGISTER
+===================================================== */
 
 async function registerUser(event) {
+
     event.preventDefault();
 
     const name = $("#regName")?.value.trim();
-    const username = $("#regUsername")?.value.trim();
-    const email = $("#regEmail")?.value.trim();
+    const username = $("#regUsername")?.value.trim().toLowerCase();
+    const email = $("#regEmail")?.value.trim().toLowerCase();
     const password = $("#regPassword")?.value;
 
     const status = $("#registerStatus");
@@ -265,84 +279,182 @@ async function registerUser(event) {
     setStatus(status, "Creating your account...");
 
     try {
+
         const data = await apiRequest("/auth/register", {
             method: "POST",
+
             body: JSON.stringify({
-                name,
-                username,
-                email,
-                password
+                name: name,
+                username: username,
+                email: email,
+                password: password
             })
         });
 
-        const token = data.access_token ||
-                      data.token ||
-                      data.accessToken;
+        // Your Flask backend returns "token".
+        if (data.token) {
 
-        if (token) {
-            saveToken(token);
-            currentUser = data.user || data;
+            saveToken(data.token);
+
+            currentUser = data.user;
+
             await loadCurrentUser();
+
             showApp();
-            showToast("Your account has been created!");
+
+            showToast("Welcome to CHANTGENZ!");
+
         } else {
+
             setStatus(
                 status,
                 "Account created. Please sign in.",
                 true
             );
 
-            $("#loginIdentifier").value = email;
+            const loginInput = $("#loginIdentifier");
 
-            $("#loginForm")?.scrollIntoView({
-                behavior: "smooth"
-            });
+            if (loginInput) {
+                loginInput.value = email;
+            }
         }
 
     } catch (error) {
+
         setStatus(status, error.message);
     }
 }
 
-// -----------------------------------------
-// LOAD CURRENT USER
-// -----------------------------------------
 
-async function loadCurrentUser() {
+/* =====================================================
+   5. LOGIN
+===================================================== */
+
+async function loginUser(event) {
+
+    event.preventDefault();
+
+    const identifier = $("#loginIdentifier")?.value.trim();
+    const password = $("#loginPassword")?.value;
+
+    const status = $("#loginStatus");
+
+    if (!identifier || !password) {
+        setStatus(status, "Enter your username/email and password.");
+        return;
+    }
+
+    setStatus(status, "Signing in...");
+
     try {
-        const data = await apiRequest("/me");
 
-        currentUser = data.user || data;
+        const data = await apiRequest("/auth/login", {
+            method: "POST",
 
-        updateUserInterface();
+            body: JSON.stringify({
+                identifier: identifier,
+                password: password
+            })
+        });
+
+        if (!data.token) {
+            throw new Error("Login token was not returned.");
+        }
+
+        saveToken(data.token);
+
+        currentUser = data.user;
+
+        await loadCurrentUser();
+
+        showApp();
+
+        showToast("Login successful!");
 
     } catch (error) {
-        console.error("Could not load profile:", error);
-        throw error;
+
+        setStatus(status, error.message);
     }
 }
 
-// -----------------------------------------
-// LOGOUT
-// -----------------------------------------
+
+/* =====================================================
+   6. CURRENT USER PROFILE
+===================================================== */
+
+async function loadCurrentUser() {
+
+    const data = await apiRequest("/me");
+
+    // Your Python returns { user: {...}, email: ... }
+    currentUser = {
+        ...data.user,
+        email: data.email
+    };
+
+    updateUserInterface();
+
+    return currentUser;
+}
+
+
+/* =====================================================
+   7. LOGOUT
+===================================================== */
 
 function logoutUser() {
+
     clearToken();
+
     currentUser = null;
     currentChatUser = null;
 
     showAuth();
+
     showToast("You have signed out.");
 }
 
-// -----------------------------------------
-// NAVIGATION
-// -----------------------------------------
+
+/* =====================================================
+   8. PAGE NAVIGATION
+===================================================== */
+
+const pageTitles = {
+    home: "Home",
+    explore: "Explore",
+    reels: "Reels",
+    messages: "Messages",
+    notifications: "Notifications",
+    profile: "My Profile",
+    settings: "Settings"
+};
+
+
+function findPageElement(page) {
+
+    const possibleIds = [
+        page + "View",
+        page + "Page",
+        page
+    ];
+
+    for (const id of possibleIds) {
+
+        const element = document.getElementById(id);
+
+        if (element) return element;
+    }
+
+    return null;
+}
+
 
 function navigateTo(page) {
+
     currentPage = page;
 
     $$(".nav-link").forEach(button => {
+
         button.classList.toggle(
             "active",
             button.dataset.view === page
@@ -353,19 +465,7 @@ function navigateTo(page) {
         view.classList.remove("active");
     });
 
-    // Supports common page ID naming styles.
-    const possibleIds = [
-        `${page}View`,
-        `${page}Page`,
-        page
-    ];
-
-    let target = null;
-
-    for (const id of possibleIds) {
-        target = document.getElementById(id);
-        if (target) break;
-    }
+    const target = findPageElement(page);
 
     if (target) {
         target.classList.add("active");
@@ -374,23 +474,27 @@ function navigateTo(page) {
     const title = $("#pageTitle");
 
     if (title) {
-        const titles = {
-            home: "Home",
-            explore: "Explore",
-            reels: "Reels",
-            messages: "Messages",
-            notifications: "Notifications",
-            profile: "My Profile",
-            settings: "Settings"
-        };
-
-        title.textContent = titles[page] || page;
+        title.textContent = pageTitles[page] || page;
     }
 
-    if (page === "home") loadFeed();
-    if (page === "explore") loadExplore();
-    if (page === "messages") loadMessagePeople();
-    if (page === "profile") loadProfile();
+    switch (page) {
+
+        case "home":
+            loadFeed();
+            break;
+
+        case "explore":
+            loadExplore();
+            break;
+
+        case "messages":
+            loadMessagePeople();
+            break;
+
+        case "profile":
+            loadProfile();
+            break;
+    }
 
     window.scrollTo({
         top: 0,
@@ -398,69 +502,74 @@ function navigateTo(page) {
     });
 }
 
-// -----------------------------------------
-// FEED / POSTS
-// -----------------------------------------
+
+/* =====================================================
+   9. LOAD FEED
+===================================================== */
 
 async function loadFeed() {
+
     const feed = $("#feedList");
 
     if (!feed) return;
 
     feed.innerHTML = `
         <div class="empty-state">
-            <strong>Loading your feed...</strong>
+            <strong>Loading posts...</strong>
             Please wait.
         </div>
     `;
 
     try {
+
         const data = await apiRequest("/posts");
 
-        const posts = getArray(data, ["posts", "items", "data"]);
+        const posts = getArray(data, "posts");
 
         if (!posts.length) {
+
             feed.innerHTML = `
                 <div class="empty-state">
-                    <strong>Your feed is ready!</strong>
-                    No posts yet. Create the first post.
+                    <strong>No posts yet</strong>
+                    Be the first to share a moment!
                 </div>
             `;
+
             return;
         }
 
         feed.innerHTML = posts.map(createPostHTML).join("");
 
     } catch (error) {
+
         feed.innerHTML = `
             <div class="empty-state">
-                <strong>Unable to load posts</strong>
+                <strong>Unable to load feed</strong>
                 ${escapeHTML(error.message)}
             </div>
         `;
     }
 }
 
+
+/* =====================================================
+   10. CREATE POST HTML
+===================================================== */
+
 function createPostHTML(post) {
-    const user = post.user || post.author || {};
 
-    const name = user.name ||
-                 user.username ||
-                 post.username ||
-                 "CHANTGENZ User";
+    const user = post.user || {};
 
-    const username = user.username ||
-                     post.username ||
-                     "user";
+    const name =
+        user.name ||
+        user.username ||
+        "User";
 
-    const caption = post.caption ||
-                    post.content ||
-                    "";
+    const username = user.username || "user";
 
-    const image = post.image_url ||
-                  post.image ||
-                  post.media_url ||
-                  "";
+    const caption = post.caption || "";
+
+    const image = getImageURL(post.image_url);
 
     const date = post.created_at
         ? new Date(post.created_at).toLocaleString()
@@ -468,109 +577,149 @@ function createPostHTML(post) {
 
     return `
         <article class="post-card">
+
             <div class="post-header">
+
                 <div class="avatar">
                     ${escapeHTML(getInitials(name))}
                 </div>
 
                 <div>
                     <strong>${escapeHTML(name)}</strong>
-                    <small>@${escapeHTML(username)} ${date ? "· " + escapeHTML(date) : ""}</small>
+                    <small>
+                        @${escapeHTML(username)}
+                        ${date ? " · " + escapeHTML(date) : ""}
+                    </small>
                 </div>
+
             </div>
 
-            ${
-                image
-                ? `<img class="post-image"
-                        src="${escapeHTML(image)}"
-                        alt="Post image"
-                        loading="lazy"
-                        onerror="this.style.display='none'">`
-                : ""
-            }
+            <img
+                class="post-image"
+                src="${escapeHTML(image)}"
+                alt="Post image"
+                loading="lazy"
+                onerror="this.style.display='none'"
+            >
 
             <div class="post-caption">
                 ${escapeHTML(caption)}
             </div>
 
             <div class="post-actions">
-                <button type="button" title="Like" aria-label="Like">♡</button>
-                <button type="button" title="Comment" aria-label="Comment">▢</button>
-                <button type="button" title="Share" aria-label="Share">↗</button>
+
+                <button type="button" title="Like">
+                    ♡
+                </button>
+
+                <button type="button" title="Comment">
+                    ▢
+                </button>
+
+                <button type="button" title="Share">
+                    ↗
+                </button>
+
             </div>
+
         </article>
     `;
 }
 
-// -----------------------------------------
-// CREATE POST
-// -----------------------------------------
+
+/* =====================================================
+   11. CREATE POST
+===================================================== */
 
 function openPostDialog() {
+
     const dialog = $("#postDialog");
 
     if (dialog?.showModal) {
         dialog.showModal();
-    } else {
-        showToast("Post dialog is not available.");
     }
 }
 
+
 function closePostDialog() {
+
     $("#postDialog")?.close();
 }
 
+
 async function createPost(event) {
+
     event.preventDefault();
 
     const imageInput = $("#postImage");
     const captionInput = $("#postCaption");
+
     const status = $("#postStatus");
 
-    const caption = captionInput?.value.trim() || "";
     const file = imageInput?.files?.[0];
 
-    if (!caption && !file) {
-        setStatus(status, "Add a caption or choose an image.");
+    const caption = captionInput?.value.trim() || "";
+
+    // Your existing Python requires an image.
+    if (!file) {
+
+        setStatus(status, "Please select an image.");
+
         return;
     }
 
-    setStatus(status, "Publishing post...");
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+
+        setStatus(status, "Choose a PNG, JPG, JPEG or WEBP image.");
+
+        return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+
+        setStatus(status, "Image must be smaller than 5 MB.");
+
+        return;
+    }
+
+    setStatus(status, "Uploading your post...");
 
     try {
+
         const formData = new FormData();
 
-        formData.append("caption", caption);
+        formData.append("image", file);
 
-        if (file) {
-            formData.append("image", file);
-        }
+        formData.append("caption", caption);
 
         await apiRequest("/posts", {
             method: "POST",
             body: formData
         });
 
-        closePostDialog();
-
         $("#postForm")?.reset();
 
-        setStatus(status, "", true);
+        closePostDialog();
 
-        showToast("Your post was published!");
+        setStatus(status, "");
+
+        showToast("Post published successfully!");
 
         navigateTo("home");
 
     } catch (error) {
+
         setStatus(status, error.message);
     }
 }
 
-// -----------------------------------------
-// EXPLORE / USER SEARCH
-// -----------------------------------------
+
+/* =====================================================
+   12. EXPLORE AND SEARCH USERS
+===================================================== */
 
 async function searchUsers() {
+
     const input = $("#exploreSearch");
     const results = $("#exploreResults");
 
@@ -579,12 +728,14 @@ async function searchUsers() {
     const query = input.value.trim();
 
     if (!query) {
+
         results.innerHTML = `
             <div class="empty-state">
                 <strong>Discover people</strong>
-                Enter a username to search.
+                Search for usernames or names.
             </div>
         `;
+
         return;
     }
 
@@ -593,38 +744,53 @@ async function searchUsers() {
     `;
 
     try {
+
         const data = await apiRequest(
             `/users/search?q=${encodeURIComponent(query)}`
         );
 
-        const users = getArray(data, ["users", "results", "data"]);
+        const users = getArray(data, "users");
 
         if (!users.length) {
+
             results.innerHTML = `
                 <div class="empty-state">
                     <strong>No users found</strong>
-                    Try another username.
+                    Try another search.
                 </div>
             `;
+
             return;
         }
 
         results.innerHTML = users.map(user => {
+
             const name = user.name || user.username || "User";
-            const username = user.username || "user";
 
             return `
                 <div class="explore-card">
+
                     <div class="avatar">
-                        ${escapeHTML(getInitials(name))}
+                        ${
+                            user.avatar_url
+                            ? `<img src="${escapeHTML(getImageURL(user.avatar_url))}" alt="">`
+                            : escapeHTML(getInitials(name))
+                        }
                     </div>
+
                     <h3>${escapeHTML(name)}</h3>
-                    <p>@${escapeHTML(username)}</p>
+
+                    <p>@${escapeHTML(user.username)}</p>
+
+                    <p>${escapeHTML(user.bio || "")}</p>
+
                 </div>
             `;
+
         }).join("");
 
     } catch (error) {
+
         results.innerHTML = `
             <div class="empty-state">
                 ${escapeHTML(error.message)}
@@ -633,68 +799,105 @@ async function searchUsers() {
     }
 }
 
+
 function loadExplore() {
+
     const results = $("#exploreResults");
 
     if (results && !results.innerHTML.trim()) {
+
         results.innerHTML = `
             <div class="empty-state">
                 <strong>Explore CHANTGENZ</strong>
-                Search for people and discover new connections.
+                Find people and discover new connections.
             </div>
         `;
     }
 }
 
-// -----------------------------------------
-// MESSAGES
-// -----------------------------------------
+
+/* =====================================================
+   13. MESSAGE USER SEARCH
+===================================================== */
 
 async function loadMessagePeople() {
+
+    const input = $("#messageSearch");
     const people = $("#messagePeople");
 
     if (!people) return;
 
+    const query = input?.value.trim() || "";
+
+    if (!query) {
+
+        people.innerHTML = `
+            <div class="empty-state">
+                <strong>Find someone to chat with</strong>
+                Search for a username or name.
+            </div>
+        `;
+
+        return;
+    }
+
     people.innerHTML = `
-        <div class="empty-state">Loading people...</div>
+        <div class="empty-state">Searching users...</div>
     `;
 
     try {
-        const data = await apiRequest("/users/search?q=");
 
-        const users = getArray(data, ["users", "results", "data"]);
+        const data = await apiRequest(
+            `/users/search?q=${encodeURIComponent(query)}`
+        );
+
+        const users = getArray(data, "users").filter(user => {
+            return String(user.id) !== String(currentUser?.id);
+        });
 
         if (!users.length) {
+
             people.innerHTML = `
                 <div class="empty-state">
-                    No users available yet.
+                    No users found.
                 </div>
             `;
+
             return;
         }
 
         people.innerHTML = users.map(user => {
+
             const name = user.name || user.username || "User";
-            const username = user.username || "user";
-            const id = user.id;
 
             return `
-                <div class="message-person"
-                     data-user-id="${escapeHTML(id)}"
-                     data-username="${escapeHTML(username)}"
-                     data-name="${escapeHTML(name)}">
+                <div
+                    class="message-person"
+                    data-user-id="${escapeHTML(user.id)}"
+                    data-username="${escapeHTML(user.username)}"
+                    data-name="${escapeHTML(name)}"
+                >
+
                     <div class="avatar">
-                        ${escapeHTML(getInitials(name))}
+                        ${
+                            user.avatar_url
+                            ? `<img src="${escapeHTML(getImageURL(user.avatar_url))}" alt="">`
+                            : escapeHTML(getInitials(name))
+                        }
                     </div>
+
                     <div>
                         <strong>${escapeHTML(name)}</strong>
-                        <small>@${escapeHTML(username)}</small>
+                        <small>@${escapeHTML(user.username)}</small>
                     </div>
+
                 </div>
             `;
+
         }).join("");
 
     } catch (error) {
+
         people.innerHTML = `
             <div class="empty-state">
                 ${escapeHTML(error.message)}
@@ -703,87 +906,111 @@ async function loadMessagePeople() {
     }
 }
 
+
+/* =====================================================
+   14. OPEN CONVERSATION
+===================================================== */
+
 async function openChat(user) {
+
     currentChatUser = user;
 
     const header = $("#chatHeader");
     const messages = $("#chatMessages");
 
     if (header) {
-        header.textContent = user.name || user.username || "Chat";
+
+        header.textContent =
+            user.name || user.username || "Conversation";
     }
 
-    if (messages) {
-        messages.innerHTML = `
-            <div class="empty-state">Loading conversation...</div>
-        `;
-    }
+    if (!messages) return;
+
+    messages.innerHTML = `
+        <div class="empty-state">Loading messages...</div>
+    `;
 
     try {
+
         const data = await apiRequest(
-            `/messages/${encodeURIComponent(user.id)}`
+            `/messages/${encodeURIComponent(user.username)}`
         );
 
-        const items = getArray(data, ["messages", "items", "data"]);
-
-        if (!messages) return;
+        const items = getArray(data, "messages");
 
         if (!items.length) {
+
             messages.innerHTML = `
                 <div class="empty-state">
                     <strong>Start a conversation</strong>
                     Send your first message.
                 </div>
             `;
+
             return;
         }
 
         messages.innerHTML = items.map(message => {
-            const senderId = message.sender_id ??
-                             message.sender?.id;
 
-            const mine = String(senderId) === String(currentUser?.id);
+            const mine =
+                message.sender === currentUser?.username;
 
             return `
                 <div class="message-bubble ${mine ? "mine" : ""}">
-                    ${escapeHTML(message.content || message.message || "")}
+                    ${escapeHTML(message.body || "")}
                 </div>
             `;
+
         }).join("");
 
         messages.scrollTop = messages.scrollHeight;
 
     } catch (error) {
-        if (messages) {
-            messages.innerHTML = `
-                <div class="empty-state">
-                    ${escapeHTML(error.message)}
-                </div>
-            `;
-        }
+
+        messages.innerHTML = `
+            <div class="empty-state">
+                ${escapeHTML(error.message)}
+            </div>
+        `;
     }
 }
 
+
+/* =====================================================
+   15. SEND PRIVATE MESSAGE
+===================================================== */
+
 async function sendMessage(event) {
+
     event.preventDefault();
 
     const input = $("#messageInput");
-    const content = input?.value.trim();
 
-    if (!content) return;
+    const body = input?.value.trim();
 
-    if (!currentChatUser?.id) {
-        showToast("Choose a person before sending a message.");
+    if (!body) return;
+
+    if (!currentChatUser?.username) {
+
+        showToast("Select a person first.");
+
         return;
     }
 
     try {
+
         await apiRequest("/messages", {
+
             method: "POST",
+
             body: JSON.stringify({
-                receiver_id: currentChatUser.id,
-                content: content
+
+                recipient_username: currentChatUser.username,
+
+                body: body
+
             })
+
         });
 
         input.value = "";
@@ -791,89 +1018,234 @@ async function sendMessage(event) {
         await openChat(currentChatUser);
 
     } catch (error) {
+
         showToast(error.message);
     }
 }
 
-// -----------------------------------------
-// PROFILE
-// -----------------------------------------
+
+/* =====================================================
+   16. PROFILE
+===================================================== */
 
 async function loadProfile() {
+
     const profile = $("#profileContent");
 
-    if (!profile) return;
+    if (!profile || !currentUser) return;
 
-    if (!currentUser) {
-        profile.innerHTML = `
-            <div class="empty-state">Profile information unavailable.</div>
-        `;
-        return;
-    }
-
-    const name = currentUser.name ||
-                 currentUser.username ||
-                 "CHANTGENZ User";
+    const name =
+        currentUser.name ||
+        currentUser.username ||
+        "User";
 
     const username = currentUser.username || "user";
 
     profile.innerHTML = `
         <div class="profile-header">
+
             <div class="avatar large">
-                ${escapeHTML(getInitials(name))}
+                ${
+                    currentUser.avatar_url
+                    ? `<img src="${escapeHTML(getImageURL(currentUser.avatar_url))}" alt="">`
+                    : escapeHTML(getInitials(name))
+                }
             </div>
 
             <div class="profile-info">
+
                 <h2>${escapeHTML(name)}</h2>
+
                 <p>@${escapeHTML(username)}</p>
+
                 <p>${escapeHTML(currentUser.bio || "Welcome to my CHANTGENZ profile.")}</p>
 
                 <div class="profile-stats">
+
                     <div>
-                        <strong>${Number(currentUser.posts_count || 0)}</strong>
+                        <strong id="profilePostCount">0</strong>
                         <small>Posts</small>
                     </div>
+
                     <div>
-                        <strong>${Number(currentUser.followers_count || 0)}</strong>
+                        <strong>—</strong>
                         <small>Followers</small>
                     </div>
+
                     <div>
-                        <strong>${Number(currentUser.following_count || 0)}</strong>
+                        <strong>—</strong>
                         <small>Following</small>
                     </div>
+
                 </div>
+
+                <button
+                    type="button"
+                    class="secondary-btn"
+                    id="profileEditButton"
+                >
+                    Edit Profile
+                </button>
+
             </div>
+
+        </div>
+
+        <div class="section-heading">
+            <h2>Your Posts</h2>
+        </div>
+
+        <div id="profilePosts" class="feed-list">
+            <div class="empty-state">Loading your posts...</div>
         </div>
     `;
+
+    $("#profileEditButton")?.addEventListener(
+        "click",
+        editProfile
+    );
+
+    await loadUserPosts(username);
 }
 
-// -----------------------------------------
-// SETTINGS
-// -----------------------------------------
 
-function editProfile() {
-    showToast("Profile editing will be connected in the next development stage.");
+async function loadUserPosts(username) {
+
+    const postsContainer = $("#profilePosts");
+
+    if (!postsContainer) return;
+
+    try {
+
+        const data = await apiRequest(
+            `/posts/user/${encodeURIComponent(username)}`
+        );
+
+        const posts = getArray(data, "posts");
+
+        const count = $("#profilePostCount");
+
+        if (count) {
+            count.textContent = posts.length;
+        }
+
+        if (!posts.length) {
+
+            postsContainer.innerHTML = `
+                <div class="empty-state">
+                    <strong>No posts yet</strong>
+                    Your posts will appear here.
+                </div>
+            `;
+
+            return;
+        }
+
+        postsContainer.innerHTML = posts
+            .map(createPostHTML)
+            .join("");
+
+    } catch (error) {
+
+        postsContainer.innerHTML = `
+            <div class="empty-state">
+                ${escapeHTML(error.message)}
+            </div>
+        `;
+    }
 }
+
+
+/* =====================================================
+   17. EDIT PROFILE
+===================================================== */
+
+async function editProfile() {
+
+    if (!currentUser) return;
+
+    const name = prompt(
+        "Enter your display name:",
+        currentUser.name || ""
+    );
+
+    if (name === null) return;
+
+    const bio = prompt(
+        "Enter your profile bio:",
+        currentUser.bio || ""
+    );
+
+    if (bio === null) return;
+
+    try {
+
+        const data = await apiRequest("/me", {
+
+            method: "PATCH",
+
+            body: JSON.stringify({
+                name: name.trim(),
+                bio: bio.trim()
+            })
+
+        });
+
+        currentUser = data.user;
+
+        updateUserInterface();
+
+        await loadProfile();
+
+        showToast("Profile updated!");
+
+    } catch (error) {
+
+        showToast(error.message);
+    }
+}
+
+
+/* =====================================================
+   18. SETTINGS
+===================================================== */
 
 function privacySettings() {
-    showToast("Privacy settings are planned for the next stage.");
+
+    showToast(
+        "Advanced privacy controls are not available in your current backend."
+    );
 }
+
 
 function securitySettings() {
-    showToast("Security settings are planned for the next stage.");
+
+    showToast(
+        "Two-factor authentication is not available in your current backend."
+    );
 }
+
 
 function toggleTheme() {
+
     document.body.classList.toggle("light-theme");
 
-    const enabled = document.body.classList.contains("light-theme");
+    const light =
+        document.body.classList.contains("light-theme");
 
-    localStorage.setItem("chantgenz_theme", enabled ? "light" : "dark");
+    localStorage.setItem(
+        "chantgenz_theme",
+        light ? "light" : "dark"
+    );
 
-    showToast(enabled ? "Light theme selected." : "Dark theme selected.");
+    showToast(
+        light ? "Light theme selected." : "Dark theme selected."
+    );
 }
 
+
 function loadTheme() {
+
     const theme = localStorage.getItem("chantgenz_theme");
 
     if (theme === "light") {
@@ -881,94 +1253,165 @@ function loadTheme() {
     }
 }
 
-// -----------------------------------------
-// EVENT LISTENERS
-// -----------------------------------------
+
+/* =====================================================
+   19. EVENT LISTENERS
+===================================================== */
 
 function setupEventListeners() {
 
-    // Authentication
-    $("#loginForm")?.addEventListener("submit", loginUser);
-    $("#registerForm")?.addEventListener("submit", registerUser);
+    // Login
+    $("#loginForm")?.addEventListener(
+        "submit",
+        loginUser
+    );
+
+    // Registration
+    $("#registerForm")?.addEventListener(
+        "submit",
+        registerUser
+    );
 
     // Navigation
     $$(".nav-link").forEach(button => {
+
         button.addEventListener("click", () => {
-            navigateTo(button.dataset.view);
+
+            const page = button.dataset.view;
+
+            if (page) {
+                navigateTo(page);
+            }
+
         });
+
     });
 
     // Logout
-    $("#logoutBtn")?.addEventListener("click", logoutUser);
+    $("#logoutBtn")?.addEventListener(
+        "click",
+        logoutUser
+    );
 
     // Create post
-    $("#createPostBtn")?.addEventListener("click", openPostDialog);
-    $("#closePost")?.addEventListener("click", closePostDialog);
-    $("#postForm")?.addEventListener("submit", createPost);
+    $("#createPostBtn")?.addEventListener(
+        "click",
+        openPostDialog
+    );
+
+    $("#closePost")?.addEventListener(
+        "click",
+        closePostDialog
+    );
+
+    $("#postForm")?.addEventListener(
+        "submit",
+        createPost
+    );
 
     // Explore search
     $("#exploreSearch")?.addEventListener("input", () => {
-        clearTimeout(searchUsers.timer);
-        searchUsers.timer = setTimeout(searchUsers, 400);
+
+        clearTimeout(searchTimer);
+
+        searchTimer = setTimeout(searchUsers, 400);
+
     });
 
     // Message search
     $("#messageSearch")?.addEventListener("input", () => {
-        const query = $("#messageSearch").value.toLowerCase();
 
-        $$("#messagePeople .message-person").forEach(person => {
-            person.style.display =
-                person.textContent.toLowerCase().includes(query)
-                ? "flex"
-                : "none";
-        });
+        clearTimeout(messageSearchTimer);
+
+        messageSearchTimer = setTimeout(
+            loadMessagePeople,
+            400
+        );
+
     });
 
-    // Select a person for messaging
+    // Select message user
     $("#messagePeople")?.addEventListener("click", event => {
+
         const person = event.target.closest(".message-person");
 
         if (!person) return;
 
         openChat({
+
             id: person.dataset.userId,
+
             name: person.dataset.name,
+
             username: person.dataset.username
+
         });
+
     });
 
     // Send message
-    $("#messageForm")?.addEventListener("submit", sendMessage);
+    $("#messageForm")?.addEventListener(
+        "submit",
+        sendMessage
+    );
 
     // Settings
-    $("#editProfileBtn")?.addEventListener("click", editProfile);
-    $("#privacyBtn")?.addEventListener("click", privacySettings);
-    $("#securityBtn")?.addEventListener("click", securitySettings);
-    $("#themeBtn")?.addEventListener("click", toggleTheme);
+    $("#privacyBtn")?.addEventListener(
+        "click",
+        privacySettings
+    );
+
+    $("#securityBtn")?.addEventListener(
+        "click",
+        securitySettings
+    );
+
+    $("#themeBtn")?.addEventListener(
+        "click",
+        toggleTheme
+    );
+
 }
 
-// -----------------------------------------
-// START APPLICATION
-// -----------------------------------------
+
+/* =====================================================
+   20. START APPLICATION
+===================================================== */
 
 async function startApp() {
+
     setupEventListeners();
+
     loadTheme();
 
     if (!getToken()) {
+
         showAuth();
+
         return;
     }
 
     try {
+
         await loadCurrentUser();
+
         showApp();
+
     } catch (error) {
-        console.error(error);
+
+        console.error("Session error:", error);
+
         clearToken();
+
         showAuth();
-        showToast("Please sign in again.");
+
+        showToast("Your session expired. Please sign in again.");
+
     }
 }
 
-document.addEventListener("DOMContentLoaded", startApp);
+
+document.addEventListener(
+    "DOMContentLoaded",
+    startApp
+);
