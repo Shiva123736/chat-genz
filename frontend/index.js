@@ -2,21 +2,38 @@
 /* =====================================================
    CHANTGENZ v2.0
    Complete Frontend JavaScript
-   Compatible with your existing Flask backend
+   Compatible with existing Flask backend
 ===================================================== */
 
-/*
-  LOCAL DEVELOPMENT:
-  const API_BASE = "http://127.0.0.1:5000/api";
+/* =====================================================
+   1. API CONFIGURATION
+===================================================== */
 
-  GITHUB CODESPACES:
-  Replace this with your actual forwarded backend URL:
-  https://YOUR-CODESPACE-5000.app.github.dev/api
-*/
+const BACKEND_ORIGIN = (() => {
+    const hostname = window.location.hostname;
 
-const API_BASE = "http://127.0.0.1:5000/api";
+    // GitHub Codespaces
+    if (hostname.endsWith(".app.github.dev")) {
+        const backendHost = hostname.replace(
+            /-\d+(?=\.app\.github\.dev$)/,
+            "-5000"
+        );
 
-const BACKEND_ORIGIN = API_BASE.replace(/\/api\/?$/, "");
+        return `${window.location.protocol}//${backendHost}`;
+    }
+
+    // Local development
+    if (
+        hostname === "localhost" ||
+        hostname === "127.0.0.1"
+    ) {
+        return "http://127.0.0.1:5000";
+    }
+
+    return window.location.origin;
+})();
+
+const API_BASE = `${BACKEND_ORIGIN}/api`;
 
 const TOKEN_KEY = "chantgenz_token";
 
@@ -29,13 +46,14 @@ let messageSearchTimer = null;
 
 
 /* =====================================================
-   1. HELPER FUNCTIONS
+   2. HELPER FUNCTIONS
 ===================================================== */
 
 const $ = selector => document.querySelector(selector);
 
-const $$ = selector => [...document.querySelectorAll(selector)];
-
+const $$ = selector => [
+    ...document.querySelectorAll(selector)
+];
 
 function escapeHTML(value = "") {
     return String(value).replace(/[&<>"']/g, char => ({
@@ -47,30 +65,22 @@ function escapeHTML(value = "") {
     })[char]);
 }
 
-
 function getToken() {
     return localStorage.getItem(TOKEN_KEY);
 }
-
 
 function saveToken(token) {
     localStorage.setItem(TOKEN_KEY, token);
 }
 
-
 function clearToken() {
     localStorage.removeItem(TOKEN_KEY);
 }
 
-
 function getImageURL(path) {
     if (!path) return "";
 
-    if (
-        path.startsWith("https://") ||
-        path.startsWith("http://") ||
-        path.startsWith("data:")
-    ) {
+    if (/^(https?:|data:)/i.test(path)) {
         return path;
     }
 
@@ -78,11 +88,9 @@ function getImageURL(path) {
         (path.startsWith("/") ? path : "/" + path);
 }
 
-
 function getInitials(name = "User") {
     return name.trim().charAt(0).toUpperCase() || "U";
 }
-
 
 function getArray(data, key) {
     if (Array.isArray(data)) return data;
@@ -93,7 +101,6 @@ function getArray(data, key) {
 
     return [];
 }
-
 
 function showToast(message) {
     const toast = $("#toast");
@@ -113,7 +120,6 @@ function showToast(message) {
     }, 3000);
 }
 
-
 function setStatus(element, message, success = false) {
     if (!element) return;
 
@@ -123,7 +129,7 @@ function setStatus(element, message, success = false) {
 
 
 /* =====================================================
-   2. API CONNECTION
+   3. API CONNECTION
 ===================================================== */
 
 async function apiRequest(endpoint, options = {}) {
@@ -138,24 +144,32 @@ async function apiRequest(endpoint, options = {}) {
         headers.Authorization = `Bearer ${token}`;
     }
 
-    if (
-        options.body &&
-        !(options.body instanceof FormData)
-    ) {
+    const isFormData = options.body instanceof FormData;
+
+    if (options.body && !isFormData) {
         headers["Content-Type"] = "application/json";
     }
+
+    const cleanEndpoint = endpoint.startsWith("/")
+        ? endpoint
+        : `/${endpoint}`;
 
     let response;
 
     try {
-        response = await fetch(`${API_BASE}${endpoint}`, {
-            ...options,
-            headers
-        });
+        response = await fetch(
+            `${API_BASE}${cleanEndpoint}`,
+            {
+                ...options,
+                headers
+            }
+        );
 
     } catch (error) {
+        console.error("API connection error:", error);
+
         throw new Error(
-            "Cannot connect to the backend. Check your Flask server and API URL."
+            "Cannot connect to CHANTGENZ server. Check Flask and port 5000."
         );
     }
 
@@ -171,7 +185,7 @@ async function apiRequest(endpoint, options = {}) {
         throw new Error(
             data.error ||
             data.message ||
-            `Request failed: ${response.status}`
+            `Server error: ${response.status}`
         );
     }
 
@@ -180,7 +194,7 @@ async function apiRequest(endpoint, options = {}) {
 
 
 /* =====================================================
-   3. AUTHENTICATION VIEW
+   4. AUTHENTICATION VIEW
 ===================================================== */
 
 function showAuth() {
@@ -198,7 +212,6 @@ function showAuth() {
         app.style.display = "none";
     }
 }
-
 
 function showApp() {
 
@@ -219,7 +232,6 @@ function showApp() {
 
     navigateTo("home");
 }
-
 
 function updateUserInterface() {
 
@@ -252,7 +264,7 @@ function updateUserInterface() {
 
 
 /* =====================================================
-   4. REGISTER
+   5. REGISTER
 ===================================================== */
 
 async function registerUser(event) {
@@ -282,21 +294,19 @@ async function registerUser(event) {
 
         const data = await apiRequest("/auth/register", {
             method: "POST",
-
             body: JSON.stringify({
-                name: name,
-                username: username,
-                email: email,
-                password: password
+                name,
+                username,
+                email,
+                password
             })
         });
 
-        // Your Flask backend returns "token".
         if (data.token) {
 
             saveToken(data.token);
 
-            currentUser = data.user;
+            currentUser = data.user || {};
 
             await loadCurrentUser();
 
@@ -320,14 +330,13 @@ async function registerUser(event) {
         }
 
     } catch (error) {
-
         setStatus(status, error.message);
     }
 }
 
 
 /* =====================================================
-   5. LOGIN
+   6. LOGIN
 ===================================================== */
 
 async function loginUser(event) {
@@ -350,10 +359,9 @@ async function loginUser(event) {
 
         const data = await apiRequest("/auth/login", {
             method: "POST",
-
             body: JSON.stringify({
-                identifier: identifier,
-                password: password
+                identifier,
+                password
             })
         });
 
@@ -363,7 +371,7 @@ async function loginUser(event) {
 
         saveToken(data.token);
 
-        currentUser = data.user;
+        currentUser = data.user || {};
 
         await loadCurrentUser();
 
@@ -372,24 +380,22 @@ async function loginUser(event) {
         showToast("Login successful!");
 
     } catch (error) {
-
         setStatus(status, error.message);
     }
 }
 
 
 /* =====================================================
-   6. CURRENT USER PROFILE
+   7. CURRENT USER PROFILE
 ===================================================== */
 
 async function loadCurrentUser() {
 
     const data = await apiRequest("/me");
 
-    // Your Python returns { user: {...}, email: ... }
     currentUser = {
-        ...data.user,
-        email: data.email
+        ...(data.user || {}),
+        email: data.email || data.user?.email || ""
     };
 
     updateUserInterface();
@@ -399,7 +405,7 @@ async function loadCurrentUser() {
 
 
 /* =====================================================
-   7. LOGOUT
+   8. LOGOUT
 ===================================================== */
 
 function logoutUser() {
@@ -416,7 +422,7 @@ function logoutUser() {
 
 
 /* =====================================================
-   8. PAGE NAVIGATION
+   9. PAGE NAVIGATION
 ===================================================== */
 
 const pageTitles = {
@@ -428,7 +434,6 @@ const pageTitles = {
     profile: "My Profile",
     settings: "Settings"
 };
-
 
 function findPageElement(page) {
 
@@ -448,13 +453,19 @@ function findPageElement(page) {
     return null;
 }
 
-
 function navigateTo(page) {
+
+    const target = findPageElement(page);
+
+    if (!target) {
+        console.error("Page not found:", page);
+        showToast("This page is not available.");
+        return;
+    }
 
     currentPage = page;
 
-    $$(".nav-link").forEach(button => {
-
+    $$(".nav-btn").forEach(button => {
         button.classList.toggle(
             "active",
             button.dataset.view === page
@@ -463,13 +474,11 @@ function navigateTo(page) {
 
     $$(".page-view").forEach(view => {
         view.classList.remove("active");
+        view.classList.add("hidden");
     });
 
-    const target = findPageElement(page);
-
-    if (target) {
-        target.classList.add("active");
-    }
+    target.classList.remove("hidden");
+    target.classList.add("active");
 
     const title = $("#pageTitle");
 
@@ -504,7 +513,7 @@ function navigateTo(page) {
 
 
 /* =====================================================
-   9. LOAD FEED
+   10. LOAD FEED
 ===================================================== */
 
 async function loadFeed() {
@@ -538,7 +547,9 @@ async function loadFeed() {
             return;
         }
 
-        feed.innerHTML = posts.map(createPostHTML).join("");
+        feed.innerHTML = posts
+            .map(createPostHTML)
+            .join("");
 
     } catch (error) {
 
@@ -553,7 +564,7 @@ async function loadFeed() {
 
 
 /* =====================================================
-   10. CREATE POST HTML
+   11. CREATE POST HTML
 ===================================================== */
 
 function createPostHTML(post) {
@@ -594,13 +605,19 @@ function createPostHTML(post) {
 
             </div>
 
-            <img
-                class="post-image"
-                src="${escapeHTML(image)}"
-                alt="Post image"
-                loading="lazy"
-                onerror="this.style.display='none'"
-            >
+            ${
+                image
+                ? `
+                    <img
+                        class="post-image"
+                        src="${escapeHTML(image)}"
+                        alt="Post image"
+                        loading="lazy"
+                        onerror="this.style.display='none'"
+                    >
+                `
+                : ""
+            }
 
             <div class="post-caption">
                 ${escapeHTML(caption)}
@@ -608,15 +625,19 @@ function createPostHTML(post) {
 
             <div class="post-actions">
 
-                <button type="button" title="Like">
+                <button type="button" title="Like" disabled>
                     ♡
                 </button>
 
-                <button type="button" title="Comment">
+                <button type="button" title="Comment" disabled>
                     ▢
                 </button>
 
-                <button type="button" title="Share">
+                <button
+                    type="button"
+                    title="Share"
+                    data-share-post
+                >
                     ↗
                 </button>
 
@@ -628,7 +649,7 @@ function createPostHTML(post) {
 
 
 /* =====================================================
-   11. CREATE POST
+   12. CREATE POST
 ===================================================== */
 
 function openPostDialog() {
@@ -637,15 +658,14 @@ function openPostDialog() {
 
     if (dialog?.showModal) {
         dialog.showModal();
+    } else {
+        showToast("Post dialog is unavailable.");
     }
 }
 
-
 function closePostDialog() {
-
     $("#postDialog")?.close();
 }
-
 
 async function createPost(event) {
 
@@ -653,32 +673,24 @@ async function createPost(event) {
 
     const imageInput = $("#postImage");
     const captionInput = $("#postCaption");
-
     const status = $("#postStatus");
 
     const file = imageInput?.files?.[0];
 
     const caption = captionInput?.value.trim() || "";
 
-    // Your existing Python requires an image.
     if (!file) {
-
         setStatus(status, "Please select an image.");
-
         return;
     }
 
     if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-
-        setStatus(status, "Choose a PNG, JPG, JPEG or WEBP image.");
-
+        setStatus(status, "Choose a PNG, JPG or WEBP image.");
         return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-
         setStatus(status, "Image must be smaller than 5 MB.");
-
         return;
     }
 
@@ -689,7 +701,6 @@ async function createPost(event) {
         const formData = new FormData();
 
         formData.append("image", file);
-
         formData.append("caption", caption);
 
         await apiRequest("/posts", {
@@ -708,14 +719,13 @@ async function createPost(event) {
         navigateTo("home");
 
     } catch (error) {
-
         setStatus(status, error.message);
     }
 }
 
 
 /* =====================================================
-   12. EXPLORE AND SEARCH USERS
+   13. EXPLORE AND SEARCH USERS
 ===================================================== */
 
 async function searchUsers() {
@@ -728,14 +738,12 @@ async function searchUsers() {
     const query = input.value.trim();
 
     if (!query) {
-
         results.innerHTML = `
             <div class="empty-state">
                 <strong>Discover people</strong>
                 Search for usernames or names.
             </div>
         `;
-
         return;
     }
 
@@ -752,14 +760,12 @@ async function searchUsers() {
         const users = getArray(data, "users");
 
         if (!users.length) {
-
             results.innerHTML = `
                 <div class="empty-state">
                     <strong>No users found</strong>
                     Try another search.
                 </div>
             `;
-
             return;
         }
 
@@ -767,20 +773,25 @@ async function searchUsers() {
 
             const name = user.name || user.username || "User";
 
+            const avatar = user.avatar_url
+                ? `
+                    <img
+                        src="${escapeHTML(getImageURL(user.avatar_url))}"
+                        alt=""
+                    >
+                `
+                : escapeHTML(getInitials(name));
+
             return `
                 <div class="explore-card">
 
                     <div class="avatar">
-                        ${
-                            user.avatar_url
-                            ? `<img src="${escapeHTML(getImageURL(user.avatar_url))}" alt="">`
-                            : escapeHTML(getInitials(name))
-                        }
+                        ${avatar}
                     </div>
 
                     <h3>${escapeHTML(name)}</h3>
 
-                    <p>@${escapeHTML(user.username)}</p>
+                    <p>@${escapeHTML(user.username || "")}</p>
 
                     <p>${escapeHTML(user.bio || "")}</p>
 
@@ -799,7 +810,6 @@ async function searchUsers() {
     }
 }
 
-
 function loadExplore() {
 
     const results = $("#exploreResults");
@@ -817,7 +827,7 @@ function loadExplore() {
 
 
 /* =====================================================
-   13. MESSAGE USER SEARCH
+   14. MESSAGE USER SEARCH
 ===================================================== */
 
 async function loadMessagePeople() {
@@ -834,7 +844,7 @@ async function loadMessagePeople() {
         people.innerHTML = `
             <div class="empty-state">
                 <strong>Find someone to chat with</strong>
-                Search for a username or name.
+                Enter a username or name to search.
             </div>
         `;
 
@@ -842,7 +852,9 @@ async function loadMessagePeople() {
     }
 
     people.innerHTML = `
-        <div class="empty-state">Searching users...</div>
+        <div class="empty-state">
+            Searching users...
+        </div>
     `;
 
     try {
@@ -859,7 +871,8 @@ async function loadMessagePeople() {
 
             people.innerHTML = `
                 <div class="empty-state">
-                    No users found.
+                    <strong>No users found</strong>
+                    Try another username.
                 </div>
             `;
 
@@ -870,25 +883,30 @@ async function loadMessagePeople() {
 
             const name = user.name || user.username || "User";
 
+            const avatar = user.avatar_url
+                ? `
+                    <img
+                        src="${escapeHTML(getImageURL(user.avatar_url))}"
+                        alt=""
+                    >
+                `
+                : escapeHTML(getInitials(name));
+
             return `
                 <div
                     class="message-person"
                     data-user-id="${escapeHTML(user.id)}"
-                    data-username="${escapeHTML(user.username)}"
+                    data-username="${escapeHTML(user.username || "")}"
                     data-name="${escapeHTML(name)}"
                 >
 
                     <div class="avatar">
-                        ${
-                            user.avatar_url
-                            ? `<img src="${escapeHTML(getImageURL(user.avatar_url))}" alt="">`
-                            : escapeHTML(getInitials(name))
-                        }
+                        ${avatar}
                     </div>
 
                     <div>
                         <strong>${escapeHTML(name)}</strong>
-                        <small>@${escapeHTML(user.username)}</small>
+                        <small>@${escapeHTML(user.username || "")}</small>
                     </div>
 
                 </div>
@@ -908,10 +926,15 @@ async function loadMessagePeople() {
 
 
 /* =====================================================
-   14. OPEN CONVERSATION
+   15. OPEN CONVERSATION
 ===================================================== */
 
 async function openChat(user) {
+
+    if (!user?.username) {
+        showToast("Invalid user.");
+        return;
+    }
 
     currentChatUser = user;
 
@@ -919,7 +942,6 @@ async function openChat(user) {
     const messages = $("#chatMessages");
 
     if (header) {
-
         header.textContent =
             user.name || user.username || "Conversation";
     }
@@ -977,7 +999,7 @@ async function openChat(user) {
 
 
 /* =====================================================
-   15. SEND PRIVATE MESSAGE
+   16. SEND PRIVATE MESSAGE
 ===================================================== */
 
 async function sendMessage(event) {
@@ -991,26 +1013,19 @@ async function sendMessage(event) {
     if (!body) return;
 
     if (!currentChatUser?.username) {
-
         showToast("Select a person first.");
-
         return;
     }
 
     try {
 
         await apiRequest("/messages", {
-
             method: "POST",
 
             body: JSON.stringify({
-
                 recipient_username: currentChatUser.username,
-
-                body: body
-
+                body
             })
-
         });
 
         input.value = "";
@@ -1018,14 +1033,13 @@ async function sendMessage(event) {
         await openChat(currentChatUser);
 
     } catch (error) {
-
         showToast(error.message);
     }
 }
 
 
 /* =====================================================
-   16. PROFILE
+   17. PROFILE
 ===================================================== */
 
 async function loadProfile() {
@@ -1041,15 +1055,20 @@ async function loadProfile() {
 
     const username = currentUser.username || "user";
 
+    const avatar = currentUser.avatar_url
+        ? `
+            <img
+                src="${escapeHTML(getImageURL(currentUser.avatar_url))}"
+                alt=""
+            >
+        `
+        : escapeHTML(getInitials(name));
+
     profile.innerHTML = `
         <div class="profile-header">
 
             <div class="avatar large">
-                ${
-                    currentUser.avatar_url
-                    ? `<img src="${escapeHTML(getImageURL(currentUser.avatar_url))}" alt="">`
-                    : escapeHTML(getInitials(name))
-                }
+                ${avatar}
             </div>
 
             <div class="profile-info">
@@ -1058,7 +1077,12 @@ async function loadProfile() {
 
                 <p>@${escapeHTML(username)}</p>
 
-                <p>${escapeHTML(currentUser.bio || "Welcome to my CHANTGENZ profile.")}</p>
+                <p>
+                    ${escapeHTML(
+                        currentUser.bio ||
+                        "Welcome to my CHANTGENZ profile."
+                    )}
+                </p>
 
                 <div class="profile-stats">
 
@@ -1096,7 +1120,9 @@ async function loadProfile() {
         </div>
 
         <div id="profilePosts" class="feed-list">
-            <div class="empty-state">Loading your posts...</div>
+            <div class="empty-state">
+                Loading your posts...
+            </div>
         </div>
     `;
 
@@ -1157,7 +1183,7 @@ async function loadUserPosts(username) {
 
 
 /* =====================================================
-   17. EDIT PROFILE
+   18. EDIT PROFILE
 ===================================================== */
 
 async function editProfile() {
@@ -1181,17 +1207,15 @@ async function editProfile() {
     try {
 
         const data = await apiRequest("/me", {
-
             method: "PATCH",
 
             body: JSON.stringify({
                 name: name.trim(),
                 bio: bio.trim()
             })
-
         });
 
-        currentUser = data.user;
+        currentUser = data.user || currentUser;
 
         updateUserInterface();
 
@@ -1200,14 +1224,13 @@ async function editProfile() {
         showToast("Profile updated!");
 
     } catch (error) {
-
         showToast(error.message);
     }
 }
 
 
 /* =====================================================
-   18. SETTINGS
+   19. SETTINGS
 ===================================================== */
 
 function privacySettings() {
@@ -1217,14 +1240,12 @@ function privacySettings() {
     );
 }
 
-
 function securitySettings() {
 
     showToast(
         "Two-factor authentication is not available in your current backend."
     );
 }
-
 
 function toggleTheme() {
 
@@ -1243,19 +1264,65 @@ function toggleTheme() {
     );
 }
 
-
 function loadTheme() {
 
     const theme = localStorage.getItem("chantgenz_theme");
 
-    if (theme === "light") {
-        document.body.classList.add("light-theme");
+    document.body.classList.toggle(
+        "light-theme",
+        theme === "light"
+    );
+}
+
+
+/* =====================================================
+   20. SHARE POST
+===================================================== */
+
+async function sharePost(event) {
+
+    const button = event.target.closest("[data-share-post]");
+
+    if (!button) return;
+
+    const post = button.closest(".post-card");
+
+    if (!post) return;
+
+    const text = post.querySelector(".post-caption")?.textContent || "";
+
+    try {
+
+        if (navigator.share) {
+
+            await navigator.share({
+                title: "CHANTGENZ",
+                text
+            });
+
+        } else if (navigator.clipboard) {
+
+            await navigator.clipboard.writeText(text);
+
+            showToast("Post caption copied!");
+
+        } else {
+
+            showToast("Sharing is not supported in this browser.");
+
+        }
+
+    } catch (error) {
+
+        if (error.name !== "AbortError") {
+            showToast("Unable to share this post.");
+        }
     }
 }
 
 
 /* =====================================================
-   19. EVENT LISTENERS
+   21. EVENT LISTENERS
 ===================================================== */
 
 function setupEventListeners() {
@@ -1273,7 +1340,7 @@ function setupEventListeners() {
     );
 
     // Navigation
-    $$(".nav-link").forEach(button => {
+    $$(".nav-btn").forEach(button => {
 
         button.addEventListener("click", () => {
 
@@ -1314,7 +1381,10 @@ function setupEventListeners() {
 
         clearTimeout(searchTimer);
 
-        searchTimer = setTimeout(searchUsers, 400);
+        searchTimer = setTimeout(
+            searchUsers,
+            400
+        );
 
     });
 
@@ -1355,6 +1425,17 @@ function setupEventListeners() {
         sendMessage
     );
 
+    // Share posts
+    $("#feedList")?.addEventListener(
+        "click",
+        sharePost
+    );
+
+    $("#profileContent")?.addEventListener(
+        "click",
+        sharePost
+    );
+
     // Settings
     $("#privacyBtn")?.addEventListener(
         "click",
@@ -1370,12 +1451,11 @@ function setupEventListeners() {
         "click",
         toggleTheme
     );
-
 }
 
 
 /* =====================================================
-   20. START APPLICATION
+   22. START APPLICATION
 ===================================================== */
 
 async function startApp() {
@@ -1383,6 +1463,9 @@ async function startApp() {
     setupEventListeners();
 
     loadTheme();
+
+    console.log("CHANTGENZ frontend started.");
+    console.log("API endpoint:", API_BASE);
 
     if (!getToken()) {
 
@@ -1405,11 +1488,16 @@ async function startApp() {
 
         showAuth();
 
-        showToast("Your session expired. Please sign in again.");
-
+        showToast(
+            "Your session expired. Please sign in again."
+        );
     }
 }
 
+
+/* =====================================================
+   23. APPLICATION INITIALIZATION
+===================================================== */
 
 document.addEventListener(
     "DOMContentLoaded",
